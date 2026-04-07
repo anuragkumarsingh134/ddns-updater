@@ -1,0 +1,11 @@
+version: '3.8'
+
+services:
+  ddns-updater:
+    build: .
+    container_name: cloudflare-ddns-updater
+    restart: always
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./data:/app/data

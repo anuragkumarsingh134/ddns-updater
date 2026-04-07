@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DDNS Updater Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --bg-body: #fafafa;
+            --bg-card: #fff;
+            --text-main: #333;
+            --text-muted: #666;
+            --border-color: #eaeaea;
+            --bg-input: #fff;
+            --log-bg: #fff;
+        }
+
+        body.dark-mode {
+            --bg-body: #111827;
+            --bg-card: #1f2937;
+            --text-main: #f3f4f6;
+            --text-muted: #9ca3af;
+            --border-color: #374151;
+            --bg-input: #374151;
+            --log-bg: #111827;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-body);
+            color: var(--text-main);
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+            transition: background-color 0.3s, color 0.3s;
+        }
+        
+        /* Layout */
+        .wrapper { flex: 1 0 auto; margin-top: 80px; margin-bottom: 40px; }
+        .footer { flex-shrink: 0; padding: 20px 0; background: var(--bg-card); border-top: 1px solid var(--border-color); text-align: center; font-size: 0.9rem; color: var(--text-muted); }
+        
+        /* Header */
+        .navbar { background: var(--bg-card); box-shadow: 0 1px 4px rgba(0,0,0,0.03); border-bottom: 1px solid var(--border-color); padding: 12px 0; }
+        .navbar-brand { font-weight: 600; font-size: 1.15rem; display: flex; align-items: center; gap: 8px; color: var(--text-main);}
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; background-color: #10b981; }
+        
+        /* Cards */
+        .card { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,0.03); margin-bottom: 24px; color: var(--text-main); }
+        .card-header { background: transparent; border-bottom: 1px solid var(--border-color); font-weight: 600; padding: 16px 20px; font-size: 0.95rem; }
+        .card-body { padding: 20px; }
+        
+        /* Inputs */
+        .form-control, .form-select { background: var(--bg-input); color: var(--text-main); border-radius: 8px; border: 1px solid var(--border-color); box-shadow: none; padding: 10px 14px; font-size: 0.95rem; }
+        .form-control:focus, .form-select:focus { background: var(--bg-input); color: var(--text-main); border-color: #0d6efd; box-shadow: 0 0 0 3px rgba(13,110,253,0.1); }
+        .form-label { font-weight: 500; font-size: 0.85rem; margin-bottom: 6px; color: var(--text-muted); }
+        
+        /* Buttons */
+        .btn { border-radius: 8px; padding: 10px 16px; font-weight: 500; font-size: 0.95rem; }
+        .dark-mode-toggle { cursor: pointer; display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 8px; background: var(--bg-body); border: 1px solid var(--border-color); color: var(--text-main); }
+        
+        /* Tracked Domains */
+        .domain-item { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border: 1px solid var(--border-color); border-radius: 8px; margin-bottom: 10px; background: var(--bg-card); transition: background 0.2s; }
+        .domain-item:hover { background: var(--bg-body); }
+        .domain-item.paused { opacity: 0.6; }
+        .domain-meta { display: flex; gap: 6px; margin-top: 4px; }
+        .badge { font-weight: 500; font-size: 0.70rem; padding: 4px 8px; border-radius: 4px; }
+        .badge-proxy-on { background-color: #fdf2f8; color: #db2777; border: 1px solid #fbcfe8;}
+        .badge-proxy-off { background-color: #f8fafc; color: #475569; border: 1px solid #e2e8f0; }
+        .badge-interval { background-color: #f0f9ff; color: #0284c7; border: 1px solid #e0f2fe; }
+        .badge-paused { background-color: #fffbeb; color: #b45309; border: 1px solid #fef3c7; }
+        
+        body.dark-mode .badge-proxy-on { background: #831843; color: #fce7f3; border-color: #be185d; }
+        body.dark-mode .badge-proxy-off { background: #334155; color: #cbd5e1; border-color: #475569; }
+        body.dark-mode .badge-interval { background: #0c4a6e; color: #e0f2fe; border-color: #0369a1; }
+        body.dark-mode .badge-paused { background: #78350f; color: #fef3c7; border-color: #b45309; }
+        
+        /* Logs */
+        .log-container { 
+            background: var(--log-bg); 
+            border: 1px solid var(--border-color); 
+            border-radius: 12px; 
+            padding: 20px; 
+            font-family: 'JetBrains Mono', monospace; 
+            font-size: 0.82rem; 
+            color: var(--text-muted); 
+            height: 550px; 
+            max-height: calc(100vh - 180px);
+            overflow-y: auto; 
+            white-space: pre-wrap;
+            line-height: 1.6;
+        }
+        
+        /* Modifiers for custom text colors */
+        .text-main { color: var(--text-main) !important; }
+    </style>
+</head>
+<body>
+
+<!-- Header -->
+<nav class="navbar fixed-top">
+    <div class="container d-flex justify-content-between">
+        <span class="navbar-brand m-0">
+            <span class="status-dot"></span>
+            Cloudflare DNS Sync
+        </span>
+        <div class="d-flex gap-2">
+            <button class="dark-mode-toggle" id="darkModeBtn" title="Toggle Dark Mode">🌙</button>
+            <button class="btn btn-sm btn-outline-danger" id="restartBtn">Reboot System</button>
+        </div>
+    </div>
+</nav>
+
+<!-- Main Wrapper -->
+<div class="wrapper">
+    <div class="container">
+        <div class="row g-4">
+            <!-- Left Column: Controls -->
+            <div class="col-lg-5">
+                
+                <!-- Cloudflare Connection -->
+                <div class="card">
+                    <div class="card-header" style="color: #0ea5e9;">Connection Strategy</div>
+                    <div class="card-body">
+                        <form id="tokenForm">
+                            <label class="form-label">Cloudflare Bearer Token</label>
+                            <div class="input-group">
+                                <input type="password" class="form-control" id="apiToken" placeholder="••••••••••••••••••••••••••" required>
+                                <button class="btn btn-primary" type="submit">Unlock</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- Add Record -->
+                <div class="card">
+                    <div class="card-header" style="color: #10b981;">Target Assignment</div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label class="form-label">Zone</label>
+                            <div class="input-group">
+                                <select class="form-select" id="zoneSelect" disabled><option value="">Authenticate first...</option></select>
+                                <button class="btn btn-light border" type="button" id="fetchZonesBtn" disabled>&#x21bb;</button>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">DNS Record</label>
+                            <div class="input-group">
+                                <select class="form-select" id="recordSelect" disabled><option value="">Select a Zone first...</option></select>
+                                <button class="btn btn-light border" type="button" id="fetchRecordsBtn" disabled>&#x21bb;</button>
+                            </div>
+                        </div>
+
+                        <div class="row mb-4">
+                            <div class="col">
+                                <label class="form-label">Proxy</label>
+                                <select class="form-select" id="proxySelect" disabled>
+                                    <option value="default">CF Status</option>
+                                    <option value="true">Proxied</option>
+                                    <option value="false">DNS Only</option>
+                                </select>
+                            </div>
+                            <div class="col">
+                                <label class="form-label">Frequency (Min)</label>
+                                <input type="number" class="form-control" id="intervalInput" min="1" value="1" disabled>
+                            </div>
+                        </div>
+
+                        <button id="addRecordBtn" class="btn btn-dark w-100" disabled>Start Tracking</button>
+                    </div>
+                </div>
+
+                <!-- Tracked Records -->
+                <div class="card mb-0">
+                    <div class="card-header text-main">Active Targets</div>
+                    <div class="card-body p-3">
+                        <div id="trackedDomainsList">
+                            <p class="text-muted text-center my-4 fs-6">No active targets</p>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+            
+            <!-- Right Column: Logs -->
+            <div class="col-lg-7">
+                <div class="card h-100 border-0 p-0 shadow-none bg-transparent m-0">
+                    <div class="d-flex justify-content-between align-items-center mb-2 px-1">
+                        <span class="fw-semibold text-main">Activity Logs</span>
+                        <button class="btn btn-sm btn-light border" id="clearLogsBtn">Clear Logs</button>
+                    </div>
+                    <div class="log-container shadow-sm" id="logViewer"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Footer -->
+<footer class="footer">
+    <div class="container">
+        Cloudflare DDNS Updater &bull; Minimalist Node.js Edition
+    </div>
+</footer>
+
+<script>
+    let currentConfig = { token: '', domains: [] };
+
+    // Dark mode toggle
+    const darkModeBtn = document.getElementById('darkModeBtn');
+    let isDark = localStorage.getItem('theme') === 'dark';
+    if (isDark) document.body.classList.add('dark-mode');
+    
+    darkModeBtn.addEventListener('click', () => {
+        document.body.classList.toggle('dark-mode');
+        isDark = document.body.classList.contains('dark-mode');
+        localStorage.setItem('theme', isDark ? 'dark' : 'light');
+    });
+
+    async function loadConfig() {
+        const res = await fetch('/api/config');
+        currentConfig = await res.json();
+        document.getElementById('apiToken').value = currentConfig.token;
+        renderTrackedDomains();
+
+        if (currentConfig.token) {
+            enableZoneFetching();
+            loadZones();
+        }
+    }
+
+    function renderTrackedDomains() {
+        const list = document.getElementById('trackedDomainsList');
+        if (currentConfig.domains.length === 0) {
+            list.innerHTML = '<p class="text-muted text-center my-4">No active targets.</p>';
+            return;
+        }
+
+        list.innerHTML = currentConfig.domains.map((d, index) => `
+            <div class="domain-item ${d.PAUSED ? 'paused' : ''}">
+                <div>
+                    <div class="fw-semibold text-main mb-1" style="font-size: 0.95rem;">
+                        ${d.DNS_RECORD_NAME} 
+                        ${d.PAUSED ? '<span class="badge badge-paused ms-1">PAUSED</span>' : ''}
+                    </div>
+                    <div class="domain-meta">
+                        ${d.PROXIED ? '<span class="badge badge-proxy-on">Proxied</span>' : '<span class="badge badge-proxy-off">DNS Only</span>'}
+                        <span class="badge badge-interval">${d.UPDATE_INTERVAL || 1} min interval</span>
+                    </div>
+                </div>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-sm btn-success px-3 py-1 text-white" style="font-size: 0.8rem; border-radius: 6px; border: none; font-weight: 500;" onclick="forceSync(${index})">Sync</button>
+                    <button class="btn btn-sm btn-light border px-3 py-1" style="font-size: 0.8rem; border-radius: 6px;" onclick="togglePause(${index})">
+                        ${d.PAUSED ? 'Resume' : 'Pause'}
+                    </button>
+                    <button class="btn btn-sm btn-outline-danger px-3 py-1" style="font-size: 0.8rem; border-radius: 6px;" onclick="removeDomain(${index})">Delete</button>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    async function forceSync(index) {
+        if (!confirm('Force an immediate sync to Cloudflare?')) return;
+        try {
+            const res = await fetch(`/api/domains/${index}/sync`, { method: 'POST' });
+            const data = await res.json();
+            if (res.ok) {
+                alert('Success! Confirmed IP: ' + data.ip);
+            } else {
+                alert('Failed to sync: ' + data.error);
+            }
+            fetchLogs();
+        } catch (e) {
+            alert('Error communicating with server.');
+        }
+    }
+
+    async function togglePause(index) {
+        await fetch(`/api/domains/${index}/toggle`, { method: 'POST' });
+        await loadConfig();
+    }
+
+    async function removeDomain(index) {
+        if (!confirm('Delete this domain from updater?')) return;
+        await fetch(`/api/domains/${index}`, { method: 'DELETE' });
+        await loadConfig();
+    }
+
+    document.getElementById('tokenForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const token = document.getElementById('apiToken').value;
+        const res = await fetch('/api/config/token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token })
+        });
+        if (res.ok) {
+            currentConfig.token = token;
+            enableZoneFetching();
+            loadZones();
+        }
+    });
+
+    function enableZoneFetching() {
+        document.getElementById('fetchZonesBtn').disabled = false;
+        document.getElementById('zoneSelect').disabled = false;
+    }
+
+    async function loadZones() {
+        const select = document.getElementById('zoneSelect');
+        select.innerHTML = '<option value="">Loading...</option>';
+        try {
+            const res = await fetch('/api/cf/zones');
+            const data = await res.json();
+            if (data.success) {
+                select.innerHTML = '<option value="">-- Select a Zone --</option>' + 
+                    data.result.map(z => `<option value="${z.id}">${z.name}</option>`).join('');
+            } else {
+                select.innerHTML = `<option value="">Error: ${data.errors?.[0]?.message || 'Unknown'}</option>`;
+            }
+        } catch (e) {
+            select.innerHTML = `<option value="">Fetch error</option>`;
+        }
+    }
+
+    document.getElementById('fetchZonesBtn').addEventListener('click', loadZones);
+
+    document.getElementById('zoneSelect').addEventListener('change', async (e) => {
+        const zoneId = e.target.value;
+        const recordBtn = document.getElementById('fetchRecordsBtn');
+        const recordSelect = document.getElementById('recordSelect');
+        
+        if (!zoneId) {
+            recordBtn.disabled = true;
+            recordSelect.disabled = true;
+            recordSelect.innerHTML = '<option value="">Select a Zone first...</option>';
+            document.getElementById('addRecordBtn').disabled = true;
+            document.getElementById('proxySelect').disabled = true;
+            document.getElementById('intervalInput').disabled = true;
+            return;
+        }
+
+        recordBtn.disabled = false;
+        recordSelect.disabled = false;
+        loadRecords(zoneId);
+    });
+
+    async function loadRecords(zoneId) {
+        const select = document.getElementById('recordSelect');
+        select.innerHTML = '<option value="">Loading...</option>';
+        try {
+            const res = await fetch(`/api/cf/zones/${zoneId}/dns_records`);
+            const data = await res.json();
+            if (data.success) {
+                if (data.result.length === 0) {
+                    select.innerHTML = '<option value="">No A records found</option>';
+                    document.getElementById('addRecordBtn').disabled = true;
+                    document.getElementById('proxySelect').disabled = true;
+                    document.getElementById('intervalInput').disabled = true;
+                    return;
+                }
+                select.innerHTML = '<option value="">-- Select a Record --</option>' + 
+                    data.result.map(r => {
+                        const val = JSON.stringify({id: r.id, name: r.name, proxied: r.proxied}).replace(/'/g, "&#39;");
+                        return `<option value='${val}'>${r.name} (${r.content})</option>`;
+                    }).join('');
+                document.getElementById('addRecordBtn').disabled = false;
+                document.getElementById('proxySelect').disabled = false;
+                document.getElementById('intervalInput').disabled = false;
+            } else {
+                select.innerHTML = `<option value="">Error fetching</option>`;
+                document.getElementById('addRecordBtn').disabled = true;
+                document.getElementById('proxySelect').disabled = true;
+                document.getElementById('intervalInput').disabled = true;
+            }
+        } catch (e) {
+            select.innerHTML = `<option value="">Fetch error</option>`;
+            document.getElementById('addRecordBtn').disabled = true;
+            document.getElementById('proxySelect').disabled = true;
+            document.getElementById('intervalInput').disabled = true;
+        }
+    }
+
+    document.getElementById('fetchRecordsBtn').addEventListener('click', () => {
+        const zoneId = document.getElementById('zoneSelect').value;
+        if (zoneId) loadRecords(zoneId);
+    });
+
+    document.getElementById('addRecordBtn').addEventListener('click', async () => {
+        const zoneId = document.getElementById('zoneSelect').value;
+        const recordVal = document.getElementById('recordSelect').value;
+        const proxyOverride = document.getElementById('proxySelect').value;
+        const interval = parseInt(document.getElementById('intervalInput').value) || 1;
+        
+        if (!zoneId || !recordVal) {
+            alert('Please select both a Zone and a Record');
+            return;
+        }
+
+        const recordInfo = JSON.parse(recordVal);
+        let finalProxy = recordInfo.proxied;
+        if (proxyOverride === 'true') finalProxy = true;
+        if (proxyOverride === 'false') finalProxy = false;
+        
+        const payload = {
+            ZONE_ID: zoneId,
+            DNS_RECORD_ID: recordInfo.id,
+            DNS_RECORD_NAME: recordInfo.name,
+            PROXIED: finalProxy,
+            UPDATE_INTERVAL: interval,
+            PAUSED: false
+        };
+
+        const res = await fetch('/api/domains', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        if (res.ok) {
+            document.getElementById('zoneSelect').value = "";
+            document.getElementById('recordSelect').innerHTML = '<option value="">Select a Zone first...</option>';
+            document.getElementById('recordSelect').disabled = true;
+            document.getElementById('addRecordBtn').disabled = true;
+            document.getElementById('proxySelect').disabled = true;
+            document.getElementById('intervalInput').disabled = true;
+            loadConfig();
+        }
+    });
+
+    document.getElementById('clearLogsBtn').addEventListener('click', async () => {
+        if (confirm("Clear all logs permanently?")) {
+            await fetch('/api/logs', { method: 'DELETE' });
+            fetchLogs();
+        }
+    });
+
+    document.getElementById('restartBtn').addEventListener('click', async () => {
+        if (confirm("Reboot the server instance?")) {
+            await fetch('/api/restart', { method: 'POST' });
+            setTimeout(() => { location.reload(); }, 3000);
+        }
+    });
+
+    async function fetchLogs() {
+        try {
+            const res = await fetch('/api/logs');
+            const data = await res.json();
+            const logViewer = document.getElementById('logViewer');
+            const atBottom = logViewer.scrollHeight - logViewer.scrollTop <= logViewer.clientHeight + 10;
+            
+            // Format logs to look super clean (syntax highlights)
+            let formattedLogs = data.logs
+                .replace(/(INFO)/g, '<span style="color: #0ea5e9; font-weight: 500;">$1</span>')
+                .replace(/(WARNING)/g, '<span style="color: #f59e0b; font-weight: 500;">$1</span>')
+                .replace(/(ERROR)/g, '<span style="color: #ef4444; font-weight: 500;">$1</span>')
+                .replace(/([0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2})/g, '<span style="color: #94a3b8;">$1</span>');
+                
+            logViewer.innerHTML = formattedLogs || '<span style="color: #94a3b8;">Awaiting logs...</span>';
+            
+            if (atBottom) {
+                logViewer.scrollTop = logViewer.scrollHeight;
+            }
+        } catch (err) {}
+    }
+    
+    loadConfig();
+    fetchLogs();
+    setInterval(fetchLogs, 3000);
+</script>
+</body>
+</html>
