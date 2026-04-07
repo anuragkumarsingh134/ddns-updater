@@ -14,7 +14,7 @@ app.use(express.static('public'));
 
 app.use('/api', apiRoutes);
 
-app.listen(5000, () => {
+app.listen(5000, '0.0.0.0', () => {
     logMessage('INFO', 'Node.js Server Started on port 5000');
     console.log(`Server listening on port 5000`);
     startDDNSUpdater();

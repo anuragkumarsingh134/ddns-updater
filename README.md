@@ -39,9 +39,9 @@ You must have **Node.js 20+** installed.
 Running this application via Docker guarantees that it runs infinitely in the background, surviving server reboots automatically.
 
 1. Clone the repo and enter the directory.
-2. Run Docker Compose in detached mode:
+2. Run Docker Compose in detached mode to build and start the image:
    ```bash
-   docker compose up -d
+   docker compose up -d --build
    ```
    *Note: Because of the `restart: always` flag in `docker-compose.yml`, if Docker stops or your host machine restarts, this container will instantly reboot the DDNS service itself without manual intervention.*
 
