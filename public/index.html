@@ -239,7 +239,7 @@
                         </div>
 
                         <div class="row mb-5 g-3">
-                            <div class="col-6">
+                            <div class="col-12 col-md-4">
                                 <label class="form-label">Proxy Status</label>
                                 <select class="form-select" id="proxySelect" disabled>
                                     <option value="default">CF Default</option>
@@ -247,9 +247,20 @@
                                     <option value="false">DNS Only</option>
                                 </select>
                             </div>
-                            <div class="col-6">
+                            <div class="col-6 col-md-4">
                                 <label class="form-label">Check (Min)</label>
                                 <input type="number" class="form-control" id="intervalInput" min="1" value="1" disabled>
+                            </div>
+                            <div class="col-6 col-md-4">
+                                <label class="form-label">TTL</label>
+                                <select class="form-select" id="ttlSelect" disabled>
+                                    <option value="1">Auto</option>
+                                    <option value="60">1 Min</option>
+                                    <option value="120">2 Mins</option>
+                                    <option value="300">5 Mins</option>
+                                    <option value="600">10 Mins</option>
+                                    <option value="3600">1 Hour</option>
+                                </select>
                             </div>
                         </div>
 
@@ -304,6 +315,25 @@
 
 <script>
     let currentConfig = { token: '', domains: [] };
+    let currentDomainStatus = {};
+
+    function getRelativeTime(ms) {
+        if (!ms) return 'Never';
+        const diffInSeconds = Math.floor((Date.now() - ms) / 1000);
+        if (diffInSeconds < 60) return 'Just now';
+        const diffInMinutes = Math.floor(diffInSeconds / 60);
+        if (diffInMinutes < 60) return `${diffInMinutes}m ago`;
+        const diffInHours = Math.floor(diffInMinutes / 60);
+        if (diffInHours < 24) return `${diffInHours}h ago`;
+        return `${Math.floor(diffInHours / 24)}d ago`;
+    }
+
+    function formatTTL(ttl) {
+        if (!ttl || ttl == 1) return 'Auto';
+        if (ttl < 60) return `${ttl}s`;
+        if (ttl < 3600) return `${Math.floor(ttl/60)}m`;
+        return `${Math.floor(ttl/3600)}h`;
+    }
 
     // SVGs for Icons
     const ICONS = {
@@ -312,7 +342,10 @@
         play: '<polygon points="5 3 19 12 5 21 5 3"/>',
         pause: '<rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>',
         sync: '<path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 21v-5h5"/>',
-        trash: '<path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>'
+        trash: '<path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>',
+        checkCircle: '<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>',
+        alertCircle: '<circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>',
+        clock: '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>'
     };
 
     // Dark mode toggle
@@ -358,19 +391,44 @@
             return;
         }
 
-        list.innerHTML = currentConfig.domains.map((d, index) => `
+        list.innerHTML = currentConfig.domains.map((d, index) => {
+            const status = currentDomainStatus[d.DNS_RECORD_ID] || {};
+            const isOk = status.status === 'ok';
+            const isError = status.status === 'error';
+            const isWarning = status.status === 'warning';
+            
+            let statusColor = '#94a3b8'; // default slate-400
+            if (isOk) statusColor = 'var(--success-green)';
+            if (isError) statusColor = 'var(--danger-red)';
+            if (isWarning) statusColor = '#f59e0b';
+            if (d.PAUSED) statusColor = '#64748b';
+
+            return `
             <div class="domain-item ${d.PAUSED ? 'paused' : ''}">
                 <div>
-                    <div class="fw-medium text-main mb-1" style="font-size: 0.95rem;">
+                    <div class="fw-medium text-main mb-1 d-flex align-items-center gap-2" style="font-size: 0.95rem;">
+                        <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background-color:${statusColor}; box-shadow:0 0 6px ${statusColor}80;" title="${status.message || 'Pending check...'}"></span>
                         ${d.DNS_RECORD_NAME} 
+                        ${status.ip ? `<span class="text-muted" style="font-size:0.75rem; font-weight:400; font-family:'JetBrains Mono', monospace;">${status.ip}</span>` : ''}
                     </div>
                     <div class="domain-meta">
                         ${d.PROXIED ? '<span class="badge badge-proxy-on">PROXIED</span>' : '<span class="badge badge-proxy-off">DNS ONLY</span>'}
                         <span class="badge badge-interval">${d.UPDATE_INTERVAL || 1}M CHECK</span>
+                        <span class="badge" style="background-color:rgba(148,163,184,0.1); color:var(--text-muted);">${formatTTL(d.TTL)} TTL</span>
                         ${d.PAUSED ? '<span class="badge badge-paused">PAUSED</span>' : ''}
                     </div>
+                    <div class="d-flex gap-3 mt-2" style="font-size: 0.7rem; color: var(--text-muted);">
+                        <div class="d-flex align-items-center gap-1">
+                            <svg class="svg-icon" style="width:12px; height:12px;" viewBox="0 0 24 24">${ICONS.clock}</svg>
+                            Checked: <span>${getRelativeTime(status.lastChecked)}</span>
+                        </div>
+                        <div class="d-flex align-items-center gap-1">
+                            <svg class="svg-icon" style="width:12px; height:12px; color: ${isOk ? 'var(--success-green)' : 'currentColor'};" viewBox="0 0 24 24">${ICONS.checkCircle}</svg>
+                            Updated: <span>${getRelativeTime(status.lastUpdated)}</span>
+                        </div>
+                    </div>
                 </div>
-                <div class="d-flex gap-1">
+                <div class="d-flex gap-1" style="align-items: flex-start; justify-content: flex-end; flex-shrink: 0; padding-top: 4px;">
                     <button class="btn btn-icon-only" title="Force Sync" onclick="forceSync(${index})">
                         <svg class="svg-icon" viewBox="0 0 24 24">${ICONS.sync}</svg>
                     </button>
@@ -382,7 +440,7 @@
                     </button>
                 </div>
             </div>
-        `).join('');
+        `}).join('');
     }
 
     async function forceSync(index) {
@@ -463,6 +521,7 @@
             document.getElementById('addRecordBtn').disabled = true;
             document.getElementById('proxySelect').disabled = true;
             document.getElementById('intervalInput').disabled = true;
+            document.getElementById('ttlSelect').disabled = true;
             return;
         }
 
@@ -483,27 +542,31 @@
                     document.getElementById('addRecordBtn').disabled = true;
                     document.getElementById('proxySelect').disabled = true;
                     document.getElementById('intervalInput').disabled = true;
+                    document.getElementById('ttlSelect').disabled = true;
                     return;
                 }
                 select.innerHTML = '<option value="">-- Select a Record --</option>' + 
                     data.result.map(r => {
-                        const val = JSON.stringify({id: r.id, name: r.name, proxied: r.proxied}).replace(/'/g, "&#39;");
+                        const val = JSON.stringify({id: r.id, name: r.name, proxied: r.proxied, ttl: r.ttl}).replace(/'/g, "&#39;");
                         return `<option value='${val}'>${r.name} (${r.content})</option>`;
                     }).join('');
                 document.getElementById('addRecordBtn').disabled = false;
                 document.getElementById('proxySelect').disabled = false;
                 document.getElementById('intervalInput').disabled = false;
+                document.getElementById('ttlSelect').disabled = false;
             } else {
                 select.innerHTML = `<option value="">Error fetching</option>`;
                 document.getElementById('addRecordBtn').disabled = true;
                 document.getElementById('proxySelect').disabled = true;
                 document.getElementById('intervalInput').disabled = true;
+                document.getElementById('ttlSelect').disabled = true;
             }
         } catch (e) {
             select.innerHTML = `<option value="">Fetch error</option>`;
             document.getElementById('addRecordBtn').disabled = true;
             document.getElementById('proxySelect').disabled = true;
             document.getElementById('intervalInput').disabled = true;
+            document.getElementById('ttlSelect').disabled = true;
         }
     }
 
@@ -517,6 +580,7 @@
         const recordVal = document.getElementById('recordSelect').value;
         const proxyOverride = document.getElementById('proxySelect').value;
         const interval = parseInt(document.getElementById('intervalInput').value) || 1;
+        const ttl = parseInt(document.getElementById('ttlSelect').value) || 1;
         
         if (!zoneId || !recordVal) {
             alert('Please select both a Zone and a Record');
@@ -534,6 +598,7 @@
             DNS_RECORD_NAME: recordInfo.name,
             PROXIED: finalProxy,
             UPDATE_INTERVAL: interval,
+            TTL: ttl,
             PAUSED: false
         };
 
@@ -550,6 +615,7 @@
             document.getElementById('addRecordBtn').disabled = true;
             document.getElementById('proxySelect').disabled = true;
             document.getElementById('intervalInput').disabled = true;
+            document.getElementById('ttlSelect').disabled = true;
             loadConfig();
         }
     });
@@ -630,9 +696,21 @@
         } catch (err) {}
     }
     
+    async function fetchStatus() {
+        try {
+            const res = await fetch('/api/status');
+            currentDomainStatus = await res.json();
+            renderTrackedDomains(); // Update timestamps and colors dynamically
+        } catch (err) {}
+    }
+
     loadConfig();
     fetchLogs();
-    setInterval(fetchLogs, 3000);
+    fetchStatus();
+    setInterval(() => {
+        fetchLogs();
+        fetchStatus();
+    }, 3000);
 </script>
 </body>
 </html>

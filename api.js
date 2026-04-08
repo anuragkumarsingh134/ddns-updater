@@ -1,7 +1,7 @@
 const express = require('express');
 const fs = require('fs');
 const { ENV_FILE, DOMAINS_FILE, LOG_FILE, logMessage } = require('./utils');
-const { forceSyncDomain } = require('./updater');
+const { forceSyncDomain, getUpdaterStatus } = require('./updater');
 
 const router = express.Router();
 
@@ -71,6 +71,10 @@ router.delete('/domains/:index', (req, res) => {
     } catch (e) {
         res.status(500).json({ error: e.message });
     }
+});
+
+router.get('/status', (req, res) => {
+    res.json(getUpdaterStatus());
 });
 
 // Cloudflare API Proxies

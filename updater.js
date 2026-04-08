@@ -3,6 +3,8 @@ const { DOMAINS_FILE, logMessage } = require('./utils');
 
 let cachedPublicIp = null;
 const lastUpdatedMap = new Map();
+const domainStatusMap = new Map();
+
 const IP_PROVIDERS = [
     'https://api.ipify.org?format=json',
     'https://api64.ipify.org?format=json'
@@ -40,10 +42,16 @@ async function forceSyncDomain(domainIndex) {
         if (!domain) throw new Error("Domain not found");
 
         const current_ip = await getPublicIP();
-        const { ZONE_ID, DNS_RECORD_ID, DNS_RECORD_NAME, PROXIED } = domain;
+        const { ZONE_ID, DNS_RECORD_ID, DNS_RECORD_NAME, PROXIED, TTL } = domain;
         
+        domainStatusMap.set(DNS_RECORD_ID, {
+            ...domainStatusMap.get(DNS_RECORD_ID),
+            lastChecked: Date.now()
+        });
+
         const url = `https://api.cloudflare.com/client/v4/zones/${ZONE_ID}/dns_records/${DNS_RECORD_ID}`;
         const payload = { type: 'A', name: DNS_RECORD_NAME, content: current_ip, proxied: !!PROXIED };
+        if (TTL) payload.ttl = parseInt(TTL);
 
         const cfRes = await fetch(url, {
             method: 'PATCH',
@@ -57,6 +65,13 @@ async function forceSyncDomain(domainIndex) {
         if (cfRes.ok) {
             logMessage('INFO', `Force Sync Success: Updated ${DNS_RECORD_NAME} to ${current_ip} (Proxied: ${!!PROXIED})`);
             lastUpdatedMap.set(DNS_RECORD_ID, Date.now()); // Reset timer
+            domainStatusMap.set(DNS_RECORD_ID, {
+                lastChecked: Date.now(),
+                lastUpdated: Date.now(),
+                status: 'ok',
+                message: 'Force synced successfully',
+                ip: current_ip
+            });
             // Update cache
             cachedPublicIp = current_ip;
             return { success: true, ip: current_ip };
@@ -66,6 +81,7 @@ async function forceSyncDomain(domainIndex) {
         }
     } catch(e) {
         logMessage('ERROR', `Force Sync Failed: ${e.message}`);
+        // If domain is found, we should flag it as error, but domainIndex might be invalid, handle if domain was found:
         throw e;
     }
 }
@@ -111,7 +127,7 @@ async function updateDDNS() {
         };
 
         for (const domain of activeDomains) {
-            const { ZONE_ID, DNS_RECORD_ID, DNS_RECORD_NAME, PROXIED, UPDATE_INTERVAL = 1 } = domain;
+            const { ZONE_ID, DNS_RECORD_ID, DNS_RECORD_NAME, PROXIED, TTL, UPDATE_INTERVAL = 1 } = domain;
             if (!ZONE_ID || !DNS_RECORD_ID || !DNS_RECORD_NAME) continue;
 
             const domainLastUpdated = lastUpdatedMap.get(DNS_RECORD_ID) || 0;
@@ -121,6 +137,12 @@ async function updateDDNS() {
                 continue;
             }
 
+            // Always update lastChecked time because interval was hit
+            domainStatusMap.set(DNS_RECORD_ID, {
+                ...(domainStatusMap.get(DNS_RECORD_ID) || {}),
+                lastChecked: now
+            });
+
             if (!ipHasChanged && domainLastUpdated !== 0) {
                 // Verify with Cloudflare to ensure manual remote changes are also corrected
                 const getUrl = `https://api.cloudflare.com/client/v4/zones/${ZONE_ID}/dns_records/${DNS_RECORD_ID}`;
@@ -128,18 +150,40 @@ async function updateDDNS() {
                     const getRes = await fetch(getUrl, { headers, signal: AbortSignal.timeout(5000) });
                     if (getRes.ok) {
                         const data = await getRes.json();
-                        if (data.result && data.result.content === current_ip && data.result.proxied === !!PROXIED) {
+                        let remoteTtlMatches = true;
+                        if (TTL && data.result.ttl !== parseInt(TTL)) remoteTtlMatches = false;
+
+                        if (data.result && data.result.content === current_ip && data.result.proxied === !!PROXIED && remoteTtlMatches) {
                             lastUpdatedMap.set(DNS_RECORD_ID, now);
+                            domainStatusMap.set(DNS_RECORD_ID, {
+                                lastChecked: now,
+                                lastUpdated: domainStatusMap.get(DNS_RECORD_ID)?.lastUpdated || domainLastUpdated,
+                                status: 'ok',
+                                message: 'In sync',
+                                ip: current_ip
+                            });
                             continue; 
                         }
+                    } else {
+                         domainStatusMap.set(DNS_RECORD_ID, {
+                            ...(domainStatusMap.get(DNS_RECORD_ID) || {}),
+                            status: 'error',
+                            message: 'Failed to fetch CF remote status'
+                        });
                     }
                 } catch (e) {
+                    domainStatusMap.set(DNS_RECORD_ID, {
+                        ...(domainStatusMap.get(DNS_RECORD_ID) || {}),
+                        status: 'warning',
+                        message: 'API timeout checking CF remote status'
+                    });
                     // fallthrough to update if verification fails
                 }
             }
 
             const url = `https://api.cloudflare.com/client/v4/zones/${ZONE_ID}/dns_records/${DNS_RECORD_ID}`;
             const payload = { type: 'A', name: DNS_RECORD_NAME, content: current_ip, proxied: !!PROXIED };
+            if (TTL) payload.ttl = parseInt(TTL);
 
             const cfRes = await fetch(url, {
                 method: 'PATCH',
@@ -150,9 +194,21 @@ async function updateDDNS() {
             if (cfRes.ok) {
                 logMessage('INFO', `Success: Updated ${DNS_RECORD_NAME} to ${current_ip} (Proxied: ${!!PROXIED})`);
                 lastUpdatedMap.set(DNS_RECORD_ID, now);
+                domainStatusMap.set(DNS_RECORD_ID, {
+                    lastChecked: now,
+                    lastUpdated: now,
+                    status: 'ok',
+                    message: 'Successfully updated record',
+                    ip: current_ip
+                });
             } else {
                 const text = await cfRes.text();
                 logMessage('ERROR', `Failed to update ${DNS_RECORD_NAME}: ${text}`);
+                domainStatusMap.set(DNS_RECORD_ID, {
+                    ...(domainStatusMap.get(DNS_RECORD_ID) || {}),
+                    status: 'error',
+                    message: `CF API Error: ${text}`
+                });
             }
         }
     } catch (e) {
@@ -167,4 +223,8 @@ function startDDNSUpdater() {
     setTimeout(updateDDNS, 2000);
 }
 
-module.exports = { startDDNSUpdater, forceSyncDomain };
+function getUpdaterStatus() {
+    return Object.fromEntries(domainStatusMap);
+}
+
+module.exports = { startDDNSUpdater, forceSyncDomain, getUpdaterStatus };
