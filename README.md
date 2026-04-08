@@ -45,8 +45,15 @@ Running this application via Docker guarantees that it runs infinitely in the ba
    ```
    *Note: Because of the `restart: always` flag in `docker-compose.yml`, if Docker stops or your host machine restarts, this container will instantly reboot the DDNS service itself without manual intervention.*
 
-3. **Where is my data?**
+4. **Where is my data?**
    All your configurations containing tokens and domains are safely isolated inside the `./data/` folder dynamically generated next to the `docker-compose.yml` file.
+
+### 🔄 Updating an Already Running Docker Container
+If the source code has been updated, you can pull the latest changes and restart the Docker container without losing your domains or API tokens:
+```bash
+git pull
+docker compose up -d --build
+```
 
 ## Usage Guide
 1. Launch the dashboard (`http://localhost:5000`).

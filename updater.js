@@ -46,7 +46,7 @@ async function forceSyncDomain(domainIndex) {
         const payload = { type: 'A', name: DNS_RECORD_NAME, content: current_ip, proxied: !!PROXIED };
 
         const cfRes = await fetch(url, {
-            method: 'PUT',
+            method: 'PATCH',
             headers: {
                 'Authorization': `Bearer ${token}`,
                 'Content-Type': 'application/json'
@@ -122,15 +122,27 @@ async function updateDDNS() {
             }
 
             if (!ipHasChanged && domainLastUpdated !== 0) {
-                lastUpdatedMap.set(DNS_RECORD_ID, now);
-                continue; 
+                // Verify with Cloudflare to ensure manual remote changes are also corrected
+                const getUrl = `https://api.cloudflare.com/client/v4/zones/${ZONE_ID}/dns_records/${DNS_RECORD_ID}`;
+                try {
+                    const getRes = await fetch(getUrl, { headers, signal: AbortSignal.timeout(5000) });
+                    if (getRes.ok) {
+                        const data = await getRes.json();
+                        if (data.result && data.result.content === current_ip && data.result.proxied === !!PROXIED) {
+                            lastUpdatedMap.set(DNS_RECORD_ID, now);
+                            continue; 
+                        }
+                    }
+                } catch (e) {
+                    // fallthrough to update if verification fails
+                }
             }
 
             const url = `https://api.cloudflare.com/client/v4/zones/${ZONE_ID}/dns_records/${DNS_RECORD_ID}`;
             const payload = { type: 'A', name: DNS_RECORD_NAME, content: current_ip, proxied: !!PROXIED };
 
             const cfRes = await fetch(url, {
-                method: 'PUT',
+                method: 'PATCH',
                 headers,
                 body: JSON.stringify(payload)
             });
